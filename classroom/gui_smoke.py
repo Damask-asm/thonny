@@ -12,7 +12,6 @@ with tempfile.TemporaryDirectory(prefix="classroom-gui-") as temp:
         "[general]\nlanguage = ru_RU\nsingle_instance = False\n", encoding="utf-8")
     import thonny
     thonny.prepare_thonny_user_dir()
-    thonny._configure_frontend_logging()
     from thonny.workbench import Workbench
     bench = Workbench()
     errors = []
