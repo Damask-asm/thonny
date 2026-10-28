@@ -1,0 +1,91 @@
+name: Build Windows Classroom
+on:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prepare pinned official runtime and modified source
+        run: python classroom/prepare.py
+      - name: Install pinned Inno Setup compiler
+        shell: pwsh
+        run: |
+          $compiler = Join-Path $env:RUNNER_TEMP 'inno-classroom'
+          $p = Start-Process build/downloads/innosetup-6.4.3.exe -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', "/DIR=$compiler") -Wait -PassThru -WindowStyle Hidden
+          if ($p.ExitCode -ne 0) { throw "Inno installation failed: $($p.ExitCode)" }
+          "CLASSROOM_ISCC=$compiler\ISCC.exe" >> $env:GITHUB_ENV
+      - name: Bundled Python, execution, variables, debugger and actual Tk window
+        shell: pwsh
+        run: |
+          @'
+          import subprocess
+          from pathlib import Path
+          root = Path.cwd()
+          exe = root / 'build/bundle/python.exe'
+          for name in ['smoke.py', 'gui_smoke.py']:
+              r = subprocess.run([str(exe), '-I', str(root / 'classroom' / name)], cwd=root.parent, text=True, capture_output=True, timeout=100)
+              print(r.stdout, r.stderr)
+              (root / 'dist' / (name + '.log')).write_text(r.stdout + r.stderr, encoding='utf-8')
+              r.check_returncode()
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime verification failed' }
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & $env:CLASSROOM_ISCC classroom/installer.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+      - name: Verify installation and removal
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'classroom-install-test'
+          $setup = Resolve-Path dist/Thonny-Classroom-5.0.0-x64-Setup.exe
+          $p = Start-Process $setup -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$target", '/TASKS=desktopicon', '/LOG=dist/install.log') -Wait -PassThru -WindowStyle Hidden
+          if ($p.ExitCode -ne 0) { throw "Install failed: $($p.ExitCode)" }
+          $env:CLASSROOM_TEST_INSTALL = $target
+          @'
+          import os, subprocess
+          from pathlib import Path
+          root = Path.cwd()
+          for name in ['smoke.py', 'gui_smoke.py']:
+              r = subprocess.run([str(Path(os.environ['CLASSROOM_TEST_INSTALL']) / 'python.exe'), '-I', str(root / 'classroom' / name)], cwd=root.parent, text=True, capture_output=True, timeout=100)
+              print(r.stdout, r.stderr)
+              (root / 'dist' / ('installed-' + name + '.log')).write_text(r.stdout + r.stderr, encoding='utf-8')
+              r.check_returncode()
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Installed application verification failed' }
+          $startLink = Join-Path ([Environment]::GetFolderPath('Programs')) 'Thonny Classroom.lnk'
+          $desktopLink = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Thonny Classroom.lnk'
+          if (!(Test-Path $startLink) -or !(Test-Path $desktopLink)) { throw 'Missing shortcuts' }
+          $p = Start-Process "$target/unins000.exe" -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/LOG=dist/uninstall.log') -Wait -PassThru -WindowStyle Hidden
+          if ($p.ExitCode -ne 0) { throw "Uninstall failed: $($p.ExitCode)" }
+          if ((Test-Path "$target/python.exe") -or (Test-Path $startLink) -or (Test-Path $desktopLink)) { throw 'Incomplete removal' }
+      - name: SHA-256
+        shell: pwsh
+        run: |
+          $name = 'Thonny-Classroom-5.0.0-x64-Setup.exe'
+          $hash = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $name" | Set-Content dist/SHA256SUMS.txt -Encoding ascii
+      - name: Upload installer, checksum and evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Thonny-Classroom-5.0.0-x64
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: classroom-failure-evidence
+          path: |
+            dist/*.log
+            dist/build-inputs.json
+          if-no-files-found: ignore

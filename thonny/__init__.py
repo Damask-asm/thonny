@@ -92,7 +92,7 @@ def _compute_thonny_user_dir():
     elif running_in_virtual_environment() and not is_private_python(sys.executable):
         return os.path.join(sys.prefix, ".thonny")
     elif sys.platform == "win32":
-        return os.path.join(_get_roaming_appdata_dir(), "Thonny")
+        return os.path.join(_get_roaming_appdata_dir(), "Thonny-Classroom")
     elif sys.platform == "darwin":
         return os.path.expanduser("~/Library/Thonny")
     else:

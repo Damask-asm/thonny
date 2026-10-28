@@ -1,0 +1,45 @@
+name: Publish Classroom Release
+on:
+  push:
+    tags:
+      - 'classroom-v5.0.0.[0-9]*'
+permissions:
+  contents: read
+concurrency:
+  group: classroom-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    uses: ./.github/workflows/windows-classroom.yml
+    permissions:
+      contents: read
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: Thonny-Classroom-5.0.0-x64
+          path: dist
+      - name: Verify checksum and publish public release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^classroom-v5\.0\.0\.[0-9]+$ ]]
+          cd dist
+          sha256sum --check SHA256SUMS.txt
+          printf '%s\n' \
+            'Неофициальная сборка Thonny 5.0.0 для Windows 10/11 x64 со встроенным Python.' \
+            'Удалены кнопка с флагом и команда Support Ukraine. Отдельные установка и профиль Classroom.' \
+            'Скачайте Thonny-Classroom-5.0.0-x64-Setup.exe. SHA256SUMS.txt содержит SHA-256.' \
+            'Автопроверки: окно Tk и русская локализация, встроенный Python, выполнение кода, переменные, пошаговый отладчик, установка и удаление.' \
+            'Визуальная проверка мастера и ручных сочетаний клавиш на Windows 10/11 остается по инструкции classroom/MANUAL_TESTS.md.' \
+            'Исходники и инструкции: https://github.com/Damask-asm/thonny. Установщик не подписан сертификатом издателя.' > release-notes.md
+          gh release create "$RELEASE_TAG" --verify-tag --latest --title "Thonny Classroom 5.0.0.1" --notes-file release-notes.md \
+            Thonny-Classroom-5.0.0-x64-Setup.exe SHA256SUMS.txt build-inputs.json *.log
