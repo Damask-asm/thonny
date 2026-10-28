@@ -99,14 +99,6 @@ pull request workflow не запускается. Официальный upstre
 Визуальная приемка мастера и ручных клавиатурных действий в Windows 10/11
 остается отдельной проверкой. Инструкция: ``classroom/MANUAL_TESTS.md``.
 
-Оригинальный README
--------------------
-
-
-.. image:: https://github.com/thonny/thonny/blob/master/thonny/res/Ukraine.png
-
-`Support Ukraine! <https://github.com/thonny/thonny/wiki/Support-Ukraine>`_
-
 ======
 Thonny
 ======
